@@ -22,12 +22,15 @@
     "kidif": "^1.1.0",
     "mustache": "^4.0.1",
     "normalize.css": "^8.0.1",
+    "sharp": "^0.34.5",
     "standard": "^14.3.3",
     "terser": "4.6.12"
   },
   "scripts": {
+    "test": "jest",
     "build": "standard src/*.js && node scripts/build.js",
     "standard": "standard --fix src/*.js",
-    "website": "node scripts/website.js"
+    "website": "node scripts/website.js",
+    "convert-assets": "node scripts/convert-assets.js"
   }
 }
