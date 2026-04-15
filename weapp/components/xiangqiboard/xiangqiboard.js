@@ -659,12 +659,21 @@ Component({
     },
 
     _clearSelection() {
+      const { draggedPiece, draggedPieceSource, currentPosition, currentOrientation } = this.data
       this.setData({
         isDragging: false,
         draggedPiece: null,
         draggedPieceSource: null
       }, () => {
         this.draw()
+        if (draggedPiece) {
+          this.triggerEvent('snapbackend', {
+            piece: draggedPiece,
+            source: draggedPieceSource,
+            position: deepCopy(currentPosition),
+            orientation: currentOrientation
+          })
+        }
       })
     },
 
