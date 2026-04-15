@@ -38,9 +38,7 @@ Component({
     currentOrientation: 'red',
     isDragging: false,
     draggedPiece: null,
-    draggedPieceSource: null,
-    draggedPieceX: 0,
-    draggedPieceY: 0
+    draggedPieceSource: null
   },
 
   canvas: null,
@@ -349,7 +347,7 @@ Component({
       const activeAnimations = this.activeAnimations || []
       const {
         canvasWidth, canvasHeight, squareSize, currentOrientation,
-        isDragging, draggedPiece, draggedPieceX, draggedPieceY
+        isDragging, draggedPiece
       } = this.data
 
       ctx.clearRect(0, 0, canvasWidth, canvasHeight)
@@ -388,10 +386,6 @@ Component({
         }
       })
 
-      if (isDragging && validSquare(this.data.draggedPieceSource)) {
-        hiddenSquares.add(this.data.draggedPieceSource)
-      }
-
       // Static pieces
       for (const square in basePosition) {
         if (hiddenSquares.has(square)) continue
@@ -410,9 +404,11 @@ Component({
         ctx.restore()
       })
 
-      // Dragged piece
-      if (isDragging) {
-        this._drawPiece(ctx, pieceImages[draggedPiece], draggedPieceX, draggedPieceY, squareSize)
+      // Selected piece float effect
+      if (isDragging && validSquare(this.data.draggedPieceSource)) {
+        const { x, y } = this.squareToXY(this.data.draggedPieceSource, currentOrientation, squareSize)
+        const floatSize = squareSize * 1.08
+        this._drawPiece(ctx, pieceImages[draggedPiece], x, y - squareSize * 0.08, floatSize)
       }
     },
 
@@ -595,109 +591,59 @@ Component({
       this._runAnimationFrame()
     },
 
-    _snapbackDraggedPiece() {
-      const { draggedPieceSource, draggedPiece, squareSize, currentOrientation } = this.data
-      const sourceXY = this.squareToXY(draggedPieceSource, currentOrientation, squareSize)
-
-      this.activeAnimations.push({
-        type: 'snapback',
-        piece: draggedPiece,
-        fromX: this.data.draggedPieceX,
-        fromY: this.data.draggedPieceY,
-        toX: sourceXY.x,
-        toY: sourceXY.y,
-        currentX: this.data.draggedPieceX,
-        currentY: this.data.draggedPieceY,
-        duration: this.properties.snapbackSpeed,
-        startTime: Date.now(),
-        onComplete: () => {
-          this.setData({ isDragging: false, draggedPiece: null }, () => {
-            this.draw()
-            this.triggerEvent('snapbackend', {
-              piece: draggedPiece,
-              source: draggedPieceSource,
-              position: deepCopy(this.data.currentPosition),
-              orientation: this.data.currentOrientation
-            })
-          })
-        }
-      })
-
-      this._runAnimationFrame()
-    },
-
-    _dropDraggedPieceOnSquare(square) {
-      const { draggedPieceSource, draggedPiece } = this.data
-      const { squareSize, currentOrientation } = this.data
-      const targetXY = this.squareToXY(square, currentOrientation, squareSize)
-
-      const newPosition = deepCopy(this.data.currentPosition)
-      if (validSquare(draggedPieceSource)) {
-        delete newPosition[draggedPieceSource]
-      }
-      newPosition[square] = draggedPiece
-
-      this.activeAnimations.push({
-        type: 'snap',
-        piece: draggedPiece,
-        fromX: this.data.draggedPieceX,
-        fromY: this.data.draggedPieceY,
-        toX: targetXY.x,
-        toY: targetXY.y,
-        currentX: this.data.draggedPieceX,
-        currentY: this.data.draggedPieceY,
-        duration: this.properties.snapSpeed,
-        startTime: Date.now(),
-        onComplete: () => {
-          this.setData({
-            isDragging: false,
-            draggedPiece: null,
-            currentPosition: newPosition
-          }, () => {
-            this.draw()
-            this.triggerEvent('snapend', {
-              source: draggedPieceSource,
-              square,
-              piece: draggedPiece
-            })
-          })
-        }
-      })
-
-      this._runAnimationFrame()
-    },
-
-    _trashDraggedPiece() {
-      const newPosition = deepCopy(this.data.currentPosition)
-      if (validSquare(this.data.draggedPieceSource)) {
-        delete newPosition[this.data.draggedPieceSource]
-      }
-
-      this.setData({
-        isDragging: false,
-        draggedPiece: null,
-        currentPosition: newPosition
-      }, () => {
-        this.draw()
-      })
-    },
-
     // -------------------------------------------------------------------------
-    // Touch Events
+    // Touch Events (select-then-move mode)
     // -------------------------------------------------------------------------
 
     onTouchStart(e) {
       if (!this.properties.draggable) return
       const touch = e.touches[0]
       const square = this.xyToSquare(touch.x, touch.y, this.data.currentOrientation, this.data.squareSize)
-      if (validSquare(square) && this.data.currentPosition[square]) {
-        this._beginDrag(square, this.data.currentPosition[square], touch.x, touch.y)
+      const { draggedPieceSource, draggedPiece, currentPosition } = this.data
+
+      // offboard: clear selection
+      if (square === 'offboard') {
+        this._clearSelection()
+        return
       }
+
+      const targetPiece = currentPosition[square]
+
+      // nothing selected yet
+      if (!draggedPiece) {
+        if (targetPiece) {
+          this._selectPiece(square, targetPiece)
+        }
+        return
+      }
+
+      // re-click selected square: deselect
+      if (square === draggedPieceSource) {
+        this._clearSelection()
+        return
+      }
+
+      // click own piece: switch selection
+      if (targetPiece && targetPiece[0] === draggedPiece[0]) {
+        this._selectPiece(square, targetPiece)
+        return
+      }
+
+      // otherwise: move (empty square or capture)
+      this._executeMove(draggedPieceSource, square, draggedPiece)
     },
 
-    _beginDrag(source, piece, x, y) {
+    onTouchMove() {
+      // no-op in select-then-move mode
+    },
+
+    onTouchEnd() {
+      // no-op in select-then-move mode
+    },
+
+    _selectPiece(square, piece) {
       this.triggerEvent('dragstart', {
-        source,
+        source: square,
         piece,
         position: deepCopy(this.data.currentPosition),
         orientation: this.data.currentOrientation
@@ -706,66 +652,43 @@ Component({
       this.setData({
         isDragging: true,
         draggedPiece: piece,
-        draggedPieceSource: source,
-        draggedPieceX: x,
-        draggedPieceY: y
+        draggedPieceSource: square
       }, () => {
         this.draw()
       })
     },
 
-    onTouchMove(e) {
-      if (!this.data.isDragging) return
-      const touch = e.touches[0]
+    _clearSelection() {
       this.setData({
-        draggedPieceX: touch.x,
-        draggedPieceY: touch.y
+        isDragging: false,
+        draggedPiece: null,
+        draggedPieceSource: null
       }, () => {
         this.draw()
       })
     },
 
-    onTouchEnd(e) {
-      if (!this.data.isDragging) return
-      const touch = e.changedTouches[0]
-      const location = this.xyToSquare(touch.x, touch.y, this.data.currentOrientation, this.data.squareSize)
-      this._stopDrag(location)
-    },
-
-    _stopDrag(location) {
-      const { draggedPieceSource, draggedPiece, currentPosition } = this.data
-      let action = 'drop'
-      if (location === 'offboard' && this.properties.dropOffBoard === 'snapback') {
-        action = 'snapback'
-      }
-      if (location === 'offboard' && this.properties.dropOffBoard === 'trash') {
-        action = 'trash'
-      }
-
-      const newPosition = deepCopy(currentPosition)
-      if (validSquare(draggedPieceSource)) {
-        delete newPosition[draggedPieceSource]
-      }
-      if (validSquare(location)) {
-        newPosition[location] = draggedPiece
-      }
+    _executeMove(source, target, piece) {
+      const oldPos = deepCopy(this.data.currentPosition)
+      const newPos = calculatePositionFromMoves(oldPos, { [source]: target })
 
       this.triggerEvent('drop', {
-        source: draggedPieceSource,
-        square: location,
-        piece: draggedPiece,
-        newPosition,
-        oldPosition: deepCopy(currentPosition),
+        source,
+        square: target,
+        piece,
+        newPosition: deepCopy(newPos),
+        oldPosition: oldPos,
         orientation: this.data.currentOrientation
       })
 
-      if (action === 'snapback') {
-        this._snapbackDraggedPiece()
-      } else if (action === 'trash') {
-        this._trashDraggedPiece()
-      } else {
-        this._dropDraggedPieceOnSquare(location)
-      }
+      // clear selection before animation
+      this.setData({
+        isDragging: false,
+        draggedPiece: null,
+        draggedPieceSource: null
+      }, () => {
+        this.position(newPos, true)
+      })
     },
 
     // -------------------------------------------------------------------------
