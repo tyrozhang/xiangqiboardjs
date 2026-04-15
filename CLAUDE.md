@@ -73,21 +73,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm run standard` — Runs StandardJS with `--fix` on `src/*.js`.
 - `npm run website` — Runs `scripts/website.js` to regenerate the static site in `docs/`.
 
-There is no automated test runner. Manual testing is done by opening `src/tests.html` in a browser.
+**Testing.** Automated tests run via Jest (`npm test`). Tests live in `tests/` and cover `weapp/utils/chess-utils.js` (`chess-utils.test.js`) and the WeChat Mini Program canvas renderer (`weapp-render.test.js`). Manual visual testing is still available by opening `src/tests.html` in a browser.
 
 ## Architecture
 
-**Single-file jQuery widget.** The entire library lives in `src/xiangqiboard.js` (~1,850 lines). It is a browser-only, jQuery-dependent DOM widget that exposes `window.Xiangqiboard`. The file contains everything: FEN/object conversion, square math, DOM generation, jQuery-based animations, and mouse/touch event handling.
+**Dual-target library.** The codebase now serves two platforms:
+1. **Browser jQuery widget** (`src/xiangqiboard.js`, ~1,850 lines) — a browser-only, jQuery-dependent DOM widget that exposes `window.Xiangqiboard`. It contains its own FEN/object conversion, square math, DOM generation, jQuery-based animations, and mouse/touch event handling.
+2. **WeChat Mini Program component** (`weapp/components/xiangqiboard/`) — a Canvas-based custom component for WeChat Mini Programs (小程序). It renders the board and pieces using the 2D Canvas API instead of DOM, with touch event handling adapted to the Mini Program framework.
+
+**Shared chess utilities.** Core logic originally embedded in `src/xiangqiboard.js` has been extracted into `weapp/utils/chess-utils.js`. This module provides FEN parsing, position validation, animation calculation, and move logic. It is consumed by the WeChat Mini Program component and is covered by automated tests.
 
 **"Just a board" scope.** This library intentionally does NOT understand xiangqi rules, legal moves, turn order, or game state. It only renders positions and provides UI interactions (drag-and-drop, animations, callbacks). Rule logic belongs in a separate library (e.g., `xiangqi.js`).
 
 **Custom Node.js build system.** There is no webpack/rollup/vite. Build logic is implemented directly in `scripts/`:
 - `scripts/build.js` reads `src/xiangqiboard.js` and `src/xiangqiboard.css`, substitutes `@VERSION` and `$version$` tokens, removes `RUN_ASSERTS` blocks, minifies with Terser/csso, and writes to `dist/` and `releases/xiangqiboardjs-<version>/`. It also copies images from `docs/img/` into the release folders.
 - `scripts/website.js` generates the documentation site in `docs/` by rendering Mustache templates (`templates/`) and processing example files (`templates/examples/*.example`). It also vendors jQuery, prettify, and normalize.css into `docs/`.
+- `scripts/convert-assets.js` converts SVG piece and board images to PNGs for the WeChat Mini Program, using `sharp`. Output goes to `weapp/static/pieces/` and `weapp/static/boards/`.
 
-**CSS obfuscation.** `src/xiangqiboard.css` uses unique hashed class names (e.g., `board-1ef78`, `square-2b8ce`) to avoid clashing with other page styles. The JS file hardcodes these same names.
+**CSS obfuscation.** `src/xiangqiboard.css` uses unique hashed class names (e.g., `board-1ef78`, `square-2b8ce`) to avoid clashing with other page styles. The JS file hardcodes these same names. The WeChat Mini Program component uses its own minimal WXSS (`xiangqiboard.wxss`) because rendering is Canvas-based.
 
-**Assets.** Default piece and board themes are SVGs stored under `docs/img/xiangqipieces/` and `docs/img/xiangqiboards/`. The build script syncs selected image directories into `dist/` and `releases/`.
+**Assets.** Default piece and board themes are SVGs stored under `docs/img/xiangqipieces/` and `docs/img/xiangqiboards/`. The build script syncs selected image directories into `dist/` and `releases/`. WeChat Mini Program assets are pre-generated PNGs under `weapp/static/`. 
 
 ## Important files
 
