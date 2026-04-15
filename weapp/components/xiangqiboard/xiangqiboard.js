@@ -38,7 +38,8 @@ Component({
     currentOrientation: 'red',
     isDragging: false,
     draggedPiece: null,
-    draggedPieceSource: null
+    draggedPieceSource: null,
+    lastMove: null
   },
 
   canvas: null,
@@ -96,6 +97,8 @@ Component({
 
       if (useAnimation !== false) useAnimation = true
 
+      this.setData({ lastMove: null })
+
       const oldPos = deepCopy(this.data.currentPosition)
 
       if (useAnimation) {
@@ -130,6 +133,13 @@ Component({
 
       const newPos = calculatePositionFromMoves(this.data.currentPosition, moves)
       this.position(newPos, useAnimation)
+
+      const moveKeys = Object.keys(moves)
+      if (moveKeys.length > 0) {
+        const source = moveKeys[moveKeys.length - 1]
+        this.setData({ lastMove: { source: source, target: moves[source] } })
+      }
+
       return newPos
     },
 
@@ -409,6 +419,40 @@ Component({
         const { x, y } = this.squareToXY(this.data.draggedPieceSource, currentOrientation, squareSize)
         const floatSize = squareSize * 1.08
         this._drawPiece(ctx, pieceImages[draggedPiece], x, y - squareSize * 0.08, floatSize)
+      }
+
+      // Last move markers
+      const { lastMove } = this.data
+      if (lastMove) {
+        const { source, target } = lastMove
+
+        if (validSquare(source)) {
+          const { x, y } = this.squareToXY(source, currentOrientation, squareSize)
+          const outerRadius = squareSize * 0.14
+          const dotRadius = squareSize * 0.10
+
+          ctx.beginPath()
+          ctx.arc(x, y, outerRadius, 0, Math.PI * 2)
+          ctx.strokeStyle = 'white'
+          ctx.lineWidth = 1
+          ctx.stroke()
+
+          ctx.beginPath()
+          ctx.arc(x, y, dotRadius, 0, Math.PI * 2)
+          ctx.fillStyle = 'white'
+          ctx.fill()
+        }
+
+        if (validSquare(target)) {
+          const { x, y } = this.squareToXY(target, currentOrientation, squareSize)
+          const ringRadius = squareSize * 0.42
+
+          ctx.beginPath()
+          ctx.arc(x, y, ringRadius, 0, Math.PI * 2)
+          ctx.strokeStyle = 'white'
+          ctx.lineWidth = 1
+          ctx.stroke()
+        }
       }
     },
 
@@ -697,6 +741,7 @@ Component({
         draggedPieceSource: null
       }, () => {
         this.position(newPos, true)
+        this.setData({ lastMove: { source: source, target: target } })
       })
     },
 
